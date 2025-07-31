@@ -24,12 +24,23 @@ app.use(helmet({
 // Enhanced CORS configuration for multiple environments
 const corsOptions = {
   origin: [
+    // Development URLs
     'http://localhost:5173',                    // Vite dev server
     'http://localhost:3000',                    // Alternative dev port
     'http://127.0.0.1:5173',                   // Alternative localhost
-    process.env.FRONTEND_URL,                   // Environment variable
-    process.env.VERCEL_URL,                     // Vercel deployment
-    process.env.NETLIFY_URL,                    // Netlify deployment
+    
+    // Production URLs - Replace these with your actual URLs
+    'https://stock-info-rouge.vercel.app/',      // Example Vercel URL
+    'https://gregarious-clafoutis-07ba37.netlify.app/',     // Example Netlify URL
+    
+    // Environment variables (for flexibility)
+    process.env.FRONTEND_URL,
+    process.env.VERCEL_URL,
+    process.env.NETLIFY_URL,
+    
+    // You can also use regex patterns for dynamic subdomains
+    /https:\/\/.*\.vercel\.app$/,               // Any Vercel app
+    /https:\/\/.*\.netlify\.app$/,              // Any Netlify app
   ].filter(Boolean), // Remove undefined values
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
@@ -41,11 +52,16 @@ const corsOptions = {
     'Origin'
   ],
   exposedHeaders: ['Authorization'],
-  optionsSuccessStatus: 200, // For legacy browser support
+  optionsSuccessStatus: 200,
   preflightContinue: false
 };
 
 app.use(cors(corsOptions));
+
+// Add debug logging in development
+if (process.env.NODE_ENV === 'development') {
+  console.log('🌐 CORS Origins:', corsOptions.origin);
+}
 
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
