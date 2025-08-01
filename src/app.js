@@ -128,6 +128,40 @@ if (isDevelopment) {
     }
   }));
 }
+// Add this before your existing routes
+app.get('/test-db', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    
+    // Test database connection
+    const dbState = mongoose.connection.readyState;
+    const states = {
+      0: 'Disconnected',
+      1: 'Connected', 
+      2: 'Connecting',
+      3: 'Disconnecting'
+    };
+    
+    res.json({
+      success: true,
+      database: {
+        state: states[dbState],
+        name: mongoose.connection.name || 'Unknown',
+        host: mongoose.connection.host || 'Unknown'
+      },
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        JWT_SECRET_SET: !!process.env.JWT_SECRET,
+        MONGODB_URI_SET: !!process.env.MONGODB_URI
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // Health check route
 app.get('/health', (req, res) => {
