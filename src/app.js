@@ -9,6 +9,9 @@ const logger = require('./utils/logger');
 
 const app = express();
 
+// ✅ ADD THIS LINE - Enable trust proxy for production deployments
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -24,24 +27,22 @@ app.use(helmet({
 // Enhanced CORS configuration for multiple environments
 const corsOptions = {
   origin: [
-    // Development URLs
-    'http://localhost:5173',                    // Vite dev server
-    'http://localhost:3000',                    // Alternative dev port
-    'http://127.0.0.1:5173',                   // Alternative localhost
+    // Development
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
     
-    // Production URLs - Replace these with your actual URLs
-    'https://stock-info-rouge.vercel.app/',      // Example Vercel URL
-    'https://gregarious-clafoutis-07ba37.netlify.app/',     // Example Netlify URL
+    // Production - Add your actual URLs
+    'https://stock-info-rouge.vercel.app',        // Your actual Vercel URL
+    'https://stock-info-8jrccn4r7-nithin-us-projects.vercel.app', // Your other Vercel URL
     
-    // Environment variables (for flexibility)
+    // Dynamic patterns for any subdomain
+    /https:\/\/.*\.vercel\.app$/,
+    /https:\/\/.*\.netlify\.app$/,
+    
+    // Environment variables
     process.env.FRONTEND_URL,
-    process.env.VERCEL_URL,
-    process.env.NETLIFY_URL,
-    
-    // You can also use regex patterns for dynamic subdomains
-    /https:\/\/.*\.vercel\.app$/,               // Any Vercel app
-    /https:\/\/.*\.netlify\.app$/,              // Any Netlify app
-  ].filter(Boolean), // Remove undefined values
+  ].filter(Boolean),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
@@ -58,18 +59,13 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Add debug logging in development
-if (process.env.NODE_ENV === 'development') {
-  console.log('🌐 CORS Origins:', corsOptions.origin);
-}
-
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
 
-// Development-friendly rate limiting
+// Development-friendly rate limiting with proxy support
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-// General rate limiting with higher limits for development
+// General rate limiting with proxy trust
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: isDevelopment ? 10000 : 1000, // Much higher limit for development
@@ -79,6 +75,8 @@ const generalLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // ✅ Configure for proxy environment
+  trustProxy: true,
   // Skip rate limiting for health checks in development
   skip: (req) => {
     return isDevelopment && (req.path === '/health' || req.path === '/');
@@ -87,25 +85,26 @@ const generalLimiter = rateLimit({
 
 app.use(generalLimiter);
 
-// Specific auth rate limiting with development considerations
+// Specific auth rate limiting with proxy support
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isDevelopment ? 1000 : 5, // Much higher for development
+  max: isDevelopment ? 1000 : 10, // Higher for development, reasonable for production
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later'
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // Custom key generator to be more lenient in development
+  // ✅ Configure for proxy environment
+  trustProxy: true,
+  // Custom key generator for proxy environment
   keyGenerator: (req) => {
-    if (isDevelopment) {
-      return `auth_dev_${req.ip}_${Math.floor(Date.now() / 60000)}`; // Reset every minute in dev
-    }
-    return `auth_${req.ip}`;
+    // Use X-Forwarded-For header in production, fallback to IP
+    return req.ip || req.connection.remoteAddress;
   }
 });
 
+// Rest of your existing app.js code continues here...
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -128,40 +127,6 @@ if (isDevelopment) {
     }
   }));
 }
-// Add this before your existing routes
-app.get('/test-db', async (req, res) => {
-  try {
-    const mongoose = require('mongoose');
-    
-    // Test database connection
-    const dbState = mongoose.connection.readyState;
-    const states = {
-      0: 'Disconnected',
-      1: 'Connected', 
-      2: 'Connecting',
-      3: 'Disconnecting'
-    };
-    
-    res.json({
-      success: true,
-      database: {
-        state: states[dbState],
-        name: mongoose.connection.name || 'Unknown',
-        host: mongoose.connection.host || 'Unknown'
-      },
-      environment: {
-        NODE_ENV: process.env.NODE_ENV,
-        JWT_SECRET_SET: !!process.env.JWT_SECRET,
-        MONGODB_URI_SET: !!process.env.MONGODB_URI
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -174,6 +139,10 @@ app.get('/health', (req, res) => {
     cors: {
       allowedOrigins: corsOptions.origin.length,
       credentials: corsOptions.credentials
+    },
+    proxy: {
+      trustProxy: app.get('trust proxy'),
+      clientIP: req.ip
     }
   });
 });
