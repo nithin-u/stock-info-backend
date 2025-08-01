@@ -195,4 +195,31 @@ app.all('*', (req, res) => {
 // Global error handler (must be last)
 app.use(errorHandler);
 
+// Add this temporary seeding endpoint
+app.get('/seed-database', async (req, res) => {
+  try {
+    // Only allow in development or with special token
+    if (process.env.NODE_ENV === 'production' && req.query.token !== 'stock-info-seed-2024') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const seedData = require('./utils/seedData');
+    await seedData();
+    
+    res.json({
+      success: true,
+      message: 'Database seeded successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Database seeding error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Database seeding failed',
+      error: error.message
+    });
+  }
+});
+
+
 module.exports = app;
