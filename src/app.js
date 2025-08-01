@@ -158,12 +158,12 @@ app.get('/', (req, res) => {
   });
 });
 
-// ✅ MOVE DATABASE SEEDING ROUTE BEFORE API ROUTES AND 404 HANDLER
+// ✅ Enhanced database seeding endpoint with detailed error logging
 app.get('/seed-database', async (req, res) => {
   try {
     logger.info('🌱 Database seeding request received');
     
-    // Security check - Updated token to match your URL
+    // Security check
     if (process.env.NODE_ENV === 'production' && req.query.token !== 'stock-info-seed-2025') {
       logger.warn('❌ Unauthorized seed attempt with token:', req.query.token);
       return res.status(403).json({ 
@@ -174,9 +174,49 @@ app.get('/seed-database', async (req, res) => {
 
     logger.info('✅ Token validated, starting database seeding...');
     
-    // Import and execute seeding
-    const seedData = require('./utils/seedData');
-    const result = await seedData();
+    // Check if seedData file exists and can be imported
+    let seedData;
+    try {
+      seedData = require('./utils/seedData');
+      logger.info('✅ seedData module imported successfully');
+    } catch (importError) {
+      logger.error('❌ Failed to import seedData module:', {
+        message: importError.message,
+        stack: importError.stack,
+        path: importError.path || 'unknown'
+      });
+      
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to import seed data module',
+        error: importError.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Execute seeding with detailed error capture
+    let result;
+    try {
+      logger.info('🔄 Executing seed function...');
+      result = await seedData();
+      logger.info('✅ Seed function completed:', result);
+    } catch (seedError) {
+      logger.error('❌ Seed execution error:', {
+        message: seedError.message,
+        stack: seedError.stack,
+        name: seedError.name,
+        code: seedError.code
+      });
+      
+      return res.status(500).json({
+        success: false,
+        message: 'Database seeding execution failed',
+        error: seedError.message,
+        errorName: seedError.name,
+        errorCode: seedError.code,
+        timestamp: new Date().toISOString()
+      });
+    }
     
     logger.info('✅ Database seeding completed successfully');
     
@@ -188,13 +228,18 @@ app.get('/seed-database', async (req, res) => {
       environment: process.env.NODE_ENV
     });
     
-  } catch (error) {
-    logger.error('❌ Database seeding error:', error);
+  } catch (globalError) {
+    logger.error('❌ Global seeding error:', {
+      message: globalError.message,
+      stack: globalError.stack,
+      name: globalError.name
+    });
     
     res.status(500).json({
       success: false,
-      message: 'Database seeding failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      message: 'Global database seeding error',
+      error: globalError.message,
+      stack: process.env.NODE_ENV === 'development' ? globalError.stack : undefined,
       timestamp: new Date().toISOString()
     });
   }
